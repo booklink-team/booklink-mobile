@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Booklink",
+    "slug": "booklink",
+    "version": "1.0.1",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/logo.png",
+    "android": {
+      "package": "ru.booklink.mobile",
+      "versionCode": 2,
+      "permissions": [
+        "INTERNET"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.VIBRATE"
+      ],
+      "softwareKeyboardLayoutMode": "resize",
+      "allowBackup": false
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true,
+            "minSdkVersion": 29
+          }
+        }
+      ]
+    ]
+  }
+}
