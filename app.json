@@ -22,12 +22,19 @@
       "allowBackup": false
     },
     "plugins": [
+      "./plugins/with-network-policy",
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": false
+        }
+      ],
       [
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true,
-            "minSdkVersion": 29
+            "minSdkVersion": 29,
+            "usesCleartextTraffic": false
           }
         }
       ]
