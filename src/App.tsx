@@ -19,7 +19,7 @@ import { ScreenActivity } from "./screenActivity";
 import { Account, Login } from "./screens/Auth";
 import { Book, Catalog } from "./screens/Catalog";
 import { ReservationDetail, Reservations } from "./screens/Reservations";
-import { Loans } from "./screens/Loans";
+import { LoanDetail, Loans } from "./screens/Loans";
 import { icons } from "./icons";
 import { DialogProvider } from "./dialogs";
 
@@ -133,6 +133,9 @@ function Workspace() {
       case "loans":
         screen = <Loans nav={nav} />;
         break;
+      case "loan":
+        screen = <LoanDetail id={current.id} nav={nav} />;
+        break;
       case "account":
         screen = <Account />;
         break;
@@ -142,6 +145,7 @@ function Workspace() {
   const tabs: [Tab, string][] = librarian
     ? [
         ["reservations", "Брони"],
+        ["loans", "Выдачи"],
         ["account", "Аккаунт"],
       ]
     : [

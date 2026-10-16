@@ -5,18 +5,20 @@ import { ActionSheet } from "../ActionSheet";
 import { ScreenActivity } from "../screenActivity";
 import { Navigation } from "../navigation";
 import { date, overdue, overdueDays } from "../dates";
-import { RecordDate } from "../RecordDetails";
-import { useResource } from "../resource";
+import { DetailRow, RecordDate } from "../RecordDetails";
+import { useResource, useSearch } from "../resource";
 import { useSession } from "../session";
 import { Loan } from "../types";
 import {
   BookHeading,
+  Button,
   Card,
   Empty,
   Icon,
   LoadState,
   Muted,
   Screen,
+  SearchField,
   Segments,
   Status,
   Txt,
@@ -42,20 +44,24 @@ function LoanStatus({ loan, showDays = false }: { loan: Loan; showDays?: boolean
   );
 }
 export function Loans({ nav }: { nav: Navigation }) {
-  const { api, mutate, busy, pending } = useSession();
+  const { session, api, mutate, busy, pending } = useSession();
   const { showDialog, showError } = useDialogs();
+  const librarian = session?.user.role === "Librarian";
+  const search = useSearch();
   const [history, setHistory] = useState(0);
   const [menuId, setMenuId] = useState<number | null>(null);
   const activeScreen = useContext(ScreenActivity);
   const resource = useResource<Loan[]>(
-    "/loans/my",
+    librarian
+      ? `/librarian/loans?search=${encodeURIComponent(search.query)}`
+      : "/loans/my",
   );
   const locked = busy || !!pending || resource.loading || !!resource.error;
   const menuLoan = resource.data?.find(loan => loan.id === menuId && loan.status === "Active");
   const count = resource.data?.filter((l) => l.status === "Active").length ?? 0;
   const items = resource.data?.filter(
     (l) =>
-      history ? l.status === "Returned" : l.status === "Active",
+      librarian || (history ? l.status === "Returned" : l.status === "Active"),
   );
   function renew(loan: Loan) {
     if (!loan.canRenew || locked) return;
@@ -71,7 +77,10 @@ export function Loans({ nav }: { nav: Navigation }) {
     });
   }
   const rows = items ? items.map((loan) =>
-    (
+    librarian ? (
+      <LibrarianLoanCard key={loan.id} loan={loan} now={api.now()}
+        open={() => nav.push({ screen: "loan", id: loan.id })} />
+    ) : (
       <StudentLoanCard key={loan.id} loan={loan} now={api.now()} nav={nav}
         disabled={locked} openMenu={() => setMenuId(loan.id)} />
     ),
@@ -79,15 +88,23 @@ export function Loans({ nav }: { nav: Navigation }) {
   return (
     <Screen
       rows={rows}
-      title="Мои книги"
+      title={librarian ? "Выдачи" : "Мои книги"}
       refreshing={resource.loading && !!resource.data}
       onRefresh={() => void resource.reload()}
     >
+      {librarian ? (
+        <SearchField
+          placeholder="Читатель, книга или инв. номер"
+          value={search.text}
+          onChangeText={search.setText}
+        />
+      ) : (
         <Segments
           selected={history}
           options={[`Действующие (${count})`, "История"]}
           onChange={setHistory}
         />
+      )}
       <LoadState
         loading={resource.loading && !resource.data}
         variant="books"
@@ -95,7 +112,7 @@ export function Loans({ nav }: { nav: Navigation }) {
         data={resource.data}
         retry={() => void resource.reload()}
       />
-      <ActionSheet visible={activeScreen && !history && !!menuLoan}
+      <ActionSheet visible={activeScreen && !librarian && !history && !!menuLoan}
         title={`Выдача №${menuLoan?.id ?? ""}`}
         subtitle={menuLoan ? menuLoan.canRenew ? menuLoan.book.title
           : `${menuLoan.book.title}\n${menuLoan.renewalDenyReason || "Продление недоступно по правилам библиотеки."}` : undefined}
@@ -110,10 +127,15 @@ export function Loans({ nav }: { nav: Navigation }) {
         }]} />
       {resource.data ? (
         <>
+          {librarian ? (
+            <Muted>Найдено действующих выдач: {items?.length}</Muted>
+          ) : null}
           {!items?.length ? (
             <Empty
               text={
-                history
+                librarian
+                  ? "Подходящих действующих выдач нет."
+                  : history
                     ? "История возвратов пока пуста."
                     : "У вас пока нет выданных книг."
               }
@@ -165,3 +187,93 @@ function StudentLoanCard({ loan, now, nav, disabled, openMenu }: {
   </Card>;
 }
 
+function LibrarianLoanCard({ loan, now, open }: { loan: Loan; now: number; open: () => void }) {
+  const { colors } = useTheme();
+  const { width, fontScale } = useWindowDimensions();
+  const stacked = width / fontScale < 340;
+  const bad = overdue(loan.dueAt, loan.status, now);
+  return <Pressable accessibilityRole="button" accessibilityLabel={`Выдача ${loan.id}`}
+    accessibilityHint="Открыть подробности выдачи и приём возврата" onPress={open}
+    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+    <Card>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <Txt style={{ fontSize: 13, fontWeight: "700", color: colors.muted }}>Выдача №{loan.id}</Txt>
+        <LoanStatus loan={loan} showDays />
+      </View>
+      <BookHeading book={loan.book} />
+      <View style={{ borderTopWidth: 1, borderColor: colors.line, paddingTop: 10, gap: 3 }}>
+        <Txt style={{ fontSize: 11, color: colors.muted }}>Читатель</Txt>
+        <Txt style={{ fontSize: 14, fontWeight: "700" }}>{loan.reader?.name ?? "Не указан"}</Txt>
+        <Txt style={{ fontSize: 12, color: colors.muted }}>{loan.reader?.login ? `${loan.reader.login} · ` : ""}{loan.inventoryNumber}</Txt>
+      </View>
+      <View style={{ flexDirection: stacked ? "column" : "row", gap: 12, borderTopWidth: 1, borderColor: colors.line, paddingTop: 10 }}>
+        <View style={{ flex: stacked ? undefined : 1 }}><RecordDate label="Выдана" value={loan.issuedAt} /></View>
+        <View style={{ flex: stacked ? undefined : 1, borderLeftWidth: stacked ? 0 : 1, borderColor: colors.line, paddingLeft: stacked ? 0 : 12 }}>
+          <RecordDate label={loan.status === "Returned" ? "Возвращена" : "Вернуть до"}
+            value={loan.status === "Returned" ? loan.returnedAt ?? "" : loan.dueAt} prominent bad={bad} />
+        </View>
+      </View>
+    </Card>
+  </Pressable>;
+}
+
+export function LoanDetail({ id, nav }: { id: number; nav: Navigation }) {
+  const resource = useResource<Loan>(`/librarian/loans/${id}`);
+  const { api, mutate, busy, pending } = useSession();
+  const { showDialog, showError } = useDialogs();
+  const loan = resource.data;
+  const { colors } = useTheme();
+  const bad = !!loan && overdue(loan.dueAt, loan.status, api.now());
+  function confirmReturn() {
+    if (!loan || loan.status !== "Active" || busy || pending || resource.loading || resource.error) return;
+    showDialog({
+      title: "Принять возврат?", tone: "info",
+      message: `«${loan.book.title}», ${loan.inventoryNumber}. Выдача будет завершена, экземпляр станет доступным. Подтвердите, что книга получена от читателя.`,
+      primary: { title: "Подтвердить возврат", onPress: () => void receive() },
+      secondary: { title: "Отмена" },
+    });
+  }
+  async function receive() {
+    if (
+      await mutate(
+        () => ({ kind: "return", id }),
+        "Возврат подтверждён. Экземпляр снова доступен.",
+        (error, uncertain) => showError(error, uncertain, "Не удалось принять возврат"),
+      )
+    )
+      nav.back();
+  }
+  return (
+    <Screen
+      title={`Выдача №${id}`}
+      back={nav.back}
+      refreshing={resource.loading && !!loan}
+      onRefresh={() => void resource.reload()}
+      footer={loan?.status === "Active" ? <Button title="Подтвердить возврат" icon="check" loading={busy}
+        disabled={!!pending || !!resource.error || resource.loading} onPress={confirmReturn} /> : undefined}
+    >
+      <LoadState
+        loading={resource.loading && !loan}
+        error={resource.error}
+        data={resource.data}
+        retry={() => void resource.reload()}
+      />
+      {loan ? (
+        <>
+          <BookHeading book={loan.book}>
+            <LoanStatus loan={loan} showDays />
+          </BookHeading>
+          <View style={{ backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 2 }}>
+            <DetailRow label="Читатель" value={loan.reader?.name ?? "Не указан"} />
+            <DetailRow label="Экземпляр" value={loan.inventoryNumber} />
+            <DetailRow label="Выдана" value={`${date(loan.issuedAt)} МСК`} />
+            <DetailRow label="Срок возврата" value={`${date(loan.dueAt)} МСК`} bad={bad} />
+            <DetailRow label="Продлений" value={`${loan.renewalCount} из 1`} last={!loan.returnedAt} />
+            {loan.returnedAt ? <DetailRow label="Возвращена" value={`${date(loan.returnedAt)} МСК`} last /> : null}
+          </View>
+          {loan.status !== "Active" ? <Muted>Возврат уже подтверждён.</Muted> : null}
+        </>
+      ) : null}
+    </Screen>
+  );
+}
