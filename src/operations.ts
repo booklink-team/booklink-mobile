@@ -1,4 +1,4 @@
-import { Reservation } from "./types";
+import { Reservation, Loan } from "./types";
 
 export interface OperationReader {
   get<T>(path: string): Promise<T>;
@@ -8,7 +8,8 @@ export interface OperationReader {
 // A changing request is sent once. Recovery never sends it again.
 export type Operation =
   | { kind: "reserve"; bookId: number; beforeIds: number[] }
-  | { kind: "cancel" | "issue"; id: number };
+  | { kind: "cancel" | "issue"; id: number }
+  | { kind: "renew"; id: number; count: number; dueAt: string };
 
 export function operationRequest(op: Operation): [string, string, unknown?] {
   switch (op.kind) {
@@ -18,6 +19,8 @@ export function operationRequest(op: Operation): [string, string, unknown?] {
       return [`/reservations/${op.id}/cancel`, "POST"];
     case "issue":
       return [`/librarian/reservations/${op.id}/issue`, "POST"];
+    case "renew":
+      return [`/loans/${op.id}/renew`, "POST"];
 
   }
 }
@@ -38,6 +41,13 @@ export async function verifyOperation(
       return (
         (await api.get<Reservation>(`/librarian/reservations/${op.id}`))
           .status === "Completed"
+      );
+    case "renew":
+      return (await api.get<Loan[]>("/loans/my")).some(
+        (r) =>
+          r.id === op.id &&
+          r.renewalCount > op.count &&
+          Date.parse(r.dueAt) > Date.parse(op.dueAt),
       );
 
   }
