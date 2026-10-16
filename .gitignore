@@ -21,3 +21,4 @@ android/app/debug.keystore
 *.keystore
 artifacts/
 test-results/
+.agents/

@@ -1,57 +1,104 @@
 export class ApiError extends Error {
-  constructor(message: string, public status = 0) { super(message); }
+  constructor(
+    message: string,
+    public status = 0,
+    public unknown = false,
+    public code?: string,
+  ) {
+    super(message);
+  }
 }
 
-export const DEFAULT_API_URL = process.env.EXPO_PUBLIC_API_URL || '';
-const offsets = new Map<string, number>();
-
+// A deployed address must be supplied by the backend owner, never guessed.
+export const DEFAULT_API_URL = process.env.EXPO_PUBLIC_API_URL || "";
+const serverOffsets = new Map<string, number>();
 export function normalizeApiUrl(value: string): string {
-  let url: URL;
-  try { url = new URL(value.trim()); }
-  catch { throw new Error('Укажите полный адрес API с /api.'); }
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname.replace(/\/+$/, '') !== '/api') {
-    throw new Error('Введите адрес API с /api, без пароля, параметров и #.');
+  if (!value.trim()) throw new Error("Сервер приложения не настроен. Обратитесь в библиотеку.");
+  const url = new URL(value.trim().replace(/\/+$/, ""));
+  if (
+    !["http:", "https:"].includes(url.protocol) ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error("Введите адрес HTTP или HTTPS без пароля, параметров и #.");
   }
-  if (url.protocol === 'http:' && !['localhost', '127.0.0.1', '10.0.2.2', '[::1]'].includes(url.hostname)) {
-    throw new Error('Для удалённого сервера нужен HTTPS. HTTP разрешён только для локальной разработки.');
-  }
-  return url.toString().replace(/\/+$/, '');
+  if (url.protocol === "http:" && !["localhost", "127.0.0.1", "10.0.2.2", "[::1]"].includes(url.hostname))
+    throw new Error("Для сервера требуется HTTPS. HTTP разрешён только для локальной разработки.");
+  return url.toString().replace(/\/+$/, "");
 }
 
 export class Api {
-  constructor(public server: string, private token?: string, private timeout = 12000) {}
-  now() { return Date.now() + (offsets.get(this.server) ?? 0); }
-  async request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
-    const address = normalizeApiUrl(this.server);
+  constructor(
+    public baseUrl: string,
+    private token?: string,
+    private onExpired?: () => void,
+    private timeout = 12000,
+  ) {}
+  now() {
+    return Date.now() + (serverOffsets.get(this.baseUrl) ?? 0);
+  }
+  async request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+    // Also guard old saved settings, before a password or JWT reaches fetch.
+    const address = normalizeApiUrl(this.baseUrl);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
+    const mutation = method !== "GET";
     try {
       const response = await fetch(address + path, {
-        method, signal: controller.signal, credentials: 'omit', redirect: 'error',
-        headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        method,
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+          ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+        },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
-      const date = response.headers.get('Date');
-      if (date && Number.isFinite(Date.parse(date))) offsets.set(this.server, Date.parse(date) - Date.now());
+      const serverDate = response.headers.get("Date");
+      if (serverDate && Number.isFinite(Date.parse(serverDate)))
+        serverOffsets.set(this.baseUrl, Date.parse(serverDate) - Date.now());
+      if (response.status === 401 && this.token) this.onExpired?.();
       if (!response.ok) {
-        throw new ApiError(response.status === 401
-          ? (path === '/auth/login' ? 'Неверный логин или пароль.' : 'Сеанс завершён. Войдите снова.')
-          : response.status === 403 ? 'Доступ запрещён.' : `Сервер ответил: HTTP ${response.status}. Повторите позже.`, response.status);
+        const problem = (await response.json().catch(() => ({}))) as {
+          detail?: string;
+          code?: string;
+          errors?: Record<string, string[]>;
+        };
+        const detail =
+          problem.detail ||
+          (problem.errors && Object.values(problem.errors).flat().join("\n"));
+        throw new ApiError(
+          detail ||
+            {
+              401: "Сеанс завершён. Войдите снова.",
+              403: "Эта операция недоступна вашей роли.",
+              404: "Запись не найдена.",
+              409: "Операция отклонена сервером.",
+            }[response.status] ||
+            "Сервер временно недоступен.",
+          response.status,
+          mutation && response.status >= 500,
+          problem.code,
+        );
       }
       if (response.status === 204) return undefined as T;
-      try { return await response.json() as T; }
-      catch { throw new ApiError('Сервер вернул некорректный ответ.'); }
+      return (await response.json()) as T;
     } catch (error) {
       if (error instanceof ApiError) throw error;
-      throw new ApiError('Ответ API не получен. Проверьте подключение и адрес сервера.');
-    } finally { clearTimeout(timer); }
+      throw new ApiError(
+        mutation
+          ? "Ответ не получен. Результат операции уточняется на сервере."
+          : "Нет ответа сервера. Проверьте подключение и адрес API.",
+        0,
+        mutation,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
   }
-}
-
-export async function checkConnection(server: string): Promise<string> {
-  try { await new Api(server).request('/auth/me'); return 'API ответил. Соединение установлено.'; }
-  catch (error) {
-    if (error instanceof ApiError && error.status === 401) return 'API ответил: HTTP 401. Соединение установлено; требуется вход.';
-    throw error;
+  get<T>(path: string) {
+    return this.request<T>(path);
   }
 }

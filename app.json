@@ -19,7 +19,11 @@
         "android.permission.VIBRATE"
       ],
       "softwareKeyboardLayoutMode": "resize",
-      "allowBackup": false
+      "allowBackup": false,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#FFFFFF"
+      }
     },
     "plugins": [
       "./plugins/with-network-policy",

@@ -1,102 +1,214 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Image, Keyboard, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { checkConnection } from './api';
-import { SessionProvider, useSession } from './session';
-import { Catalog } from './catalog';
+import React, { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, BackHandler, Pressable, StatusBar, Text, View } from "react-native";
+import { useFonts } from "expo-font";
+import { fonts } from "./fonts";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { SessionProvider, useSession } from "./session";
+import {
+  Button,
+  Card,
+  Icon,
+  LoadState,
+  Screen,
+  ThemeProvider,
+  Txt,
+  useTheme,
+} from "./ui";
+import { backFrom, Navigation, Route, RouteEntry, Tab } from "./navigation";
+import { ScreenActivity } from "./screenActivity";
+import { Account, Login } from "./screens/Auth";
+import { Book, Catalog } from "./screens/Catalog";
+import { icons } from "./icons";
+import { DialogProvider } from "./dialogs";
 
-export default function App() { return <SafeAreaProvider><SessionProvider><Workspace /></SessionProvider></SafeAreaProvider>; }
+export default function App() {
+  const [fontsLoaded, fontError] = useFonts(fonts);
+  if (!fontsLoaded) {
+    return <SafeAreaProvider><SafeAreaView style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
+      {fontError ? <Text accessibilityRole="alert">Не удалось загрузить шрифты. Перезапустите приложение.</Text>
+        : <ActivityIndicator accessibilityLabel="Загрузка приложения" />}
+    </SafeAreaView></SafeAreaProvider>;
+  }
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <DialogProvider>
+          <SessionProvider>
+            <Root />
+          </SessionProvider>
+        </DialogProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
+  );
+}
+function Root() {
+  const { session, server, ready, restoreError, restore, logout } =
+    useSession();
+  const { colors, dark } = useTheme();
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+      <StatusBar barStyle={dark ? "light-content" : "dark-content"} />
+      {!ready ? (
+        <Screen title="Booklink">
+          <LoadState loading error="" retry={() => {}} />
+        </Screen>
+      ) : restoreError ? (
+        <Screen title="Восстановление сеанса">
+          <Card>
+            <Txt>{restoreError}</Txt>
+            <Button title="Повторить проверку" onPress={() => void restore()} />
+            <Button
+              title="Выйти"
+              variant="outline"
+              onPress={() => void logout()}
+            />
+          </Card>
+        </Screen>
+      ) : session ? (
+        <Workspace key={`${session.user.id}:${server}`} />
+      ) : (
+        <Login />
+      )}
+    </SafeAreaView>
+  );
+}
 function Workspace() {
-  const { server, session, ready, busy, notice, error, restoreError, controller } = useSession();
-  const [settings, setSettings] = useState(false);
-  const [account, setAccount] = useState(false);
-  const [draft, setDraft] = useState(server);
-  const [message, setMessage] = useState('');
-  const [checking, setChecking] = useState(false);
-  const probeLock = useRef(false);
-  const disabled = busy || checking || !ready;
+  const { colors, dark } = useTheme();
+  const initial: Tab = "catalog";
+  const sequence = useRef(0);
+  const [routes, setRoutes] = useState<RouteEntry[]>([{ key: 0, route: { screen: initial } }]);
+  const entry = routes[routes.length - 1];
+  const current = entry.route;
+  function navigation(origin: number): Navigation {
+    const makeEntry = (route: Route) => ({ key: ++sequence.current, route });
+    return {
+      push: route => {
+        const next = makeEntry(route);
+        setRoutes(rs => rs[rs.length - 1].key === origin ? [...rs, next] : rs);
+      },
+      back: () => setRoutes(rs => backFrom(rs, origin)),
+      tab: tab => {
+        const next = makeEntry({ screen: tab });
+        setRoutes(rs => rs[rs.length - 1].key === origin ? [next] : rs);
+      },
+    };
+  }
+  const nav = navigation(entry.key);
   useEffect(() => {
-    const listener = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (settings) { if (!disabled) { setSettings(false); setMessage(''); } return true; }
-      if (session && account) { setAccount(false); return true; }
+    const listener = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (routes.length > 1) {
+        nav.back();
+        return true;
+      }
+      if (current.screen !== initial) {
+        nav.tab(initial);
+        return true;
+      }
       return false;
     });
     return () => listener.remove();
-  }, [settings, disabled, session, account]);
-  useEffect(() => { if (!session) setAccount(false); }, [session]);
-  function openSettings() { setDraft(server); setMessage(''); setSettings(true); }
-  async function probe() {
-    if (probeLock.current || busy) return;
-    probeLock.current = true; setChecking(true); setMessage(''); Keyboard.dismiss();
-    try { setMessage(await checkConnection(server)); }
-    catch (failure) { setMessage(failure instanceof Error ? failure.message : 'Ответ API не получен.'); }
-    finally { probeLock.current = false; setChecking(false); }
+  }, [routes, initial]);
+  function renderScreen(entry: RouteEntry) {
+    const current = entry.route;
+    const nav = navigation(entry.key);
+    let screen: React.ReactNode;
+    switch (current.screen) {
+      case "catalog":
+        screen = <Catalog nav={nav} />;
+        break;
+      case "book":
+        screen = <Book id={current.id} nav={nav} />;
+        break;
+      case "account":
+        screen = <Account />;
+        break;
+    }
+    return screen;
   }
-  if (ready && session && !settings && !restoreError && !account) {
-    return <SafeAreaView style={styles.root}><StatusBar barStyle="dark-content" />
-      <Catalog key={`${server}:${session.user.id}`} openAccount={() => setAccount(true)} />
-    </SafeAreaView>;
+  const tabs: [Tab, string][] = [
+    ["catalog", "Каталог"],
+    ["account", "Аккаунт"],
+  ];
+  function iconFor(tab: Tab, selected: boolean): keyof typeof icons {
+    if (selected)
+      return (
+        {
+          catalog: "catalog",
+          account: "accountOn",
+        } as const
+      )[tab];
+    if (tab === "catalog") return "catalogOff";
+    return (dark ? `${tab}Dark` : tab) as keyof typeof icons;
   }
-  return <SafeAreaView style={styles.root}><StatusBar barStyle="dark-content" />
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Image source={require('../assets/logo.png')} accessibilityLabel="Логотип Booklink" style={{ width: 64, height: 64 }} />
-      <Text style={styles.title}>{settings ? 'Настройки сервера' : session ? (session.user.role === 'Librarian' ? 'Кабинет библиотекаря' : 'Кабинет студента') : 'Вход в Booklink'}</Text>
-      {!ready ? <ActivityIndicator /> : settings ? <>
-        <Text style={styles.text}>Адрес API с /api. Для удалённого сервера требуется HTTPS.</Text>
-        <TextInput accessibilityLabel="Адрес сервера" value={draft} onChangeText={setDraft} editable={!disabled} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={styles.input} />
-        {!!session && <Text style={styles.text}>При смене сервера потребуется повторный вход.</Text>}
-        <Button title="Сохранить адрес" disabled={disabled} onPress={() => { Keyboard.dismiss(); void controller.setServer(draft); }} />
-        <Button title="Назад" disabled={disabled} onPress={() => { setSettings(false); setMessage(''); }} />
-      </> : restoreError ? <>
-        <Text style={styles.text}>Не удалось проверить сохранённый сеанс.</Text>
-        <Button title="Повторить" disabled={disabled} onPress={() => void controller.restore()} />
-        <Button title="Выйти из аккаунта" disabled={disabled} onPress={() => void controller.logout()} />
-        <Button title="Настройки сервера" disabled={disabled} onPress={openSettings} />
-      </> : session ? <>
-        <Text style={styles.text}>{session.user.name}</Text>
-        <Text style={styles.text}>Логин: {session.user.login}</Text>
-        <Text style={styles.text}>Роль: {session.user.role === 'Librarian' ? 'Библиотекарь' : 'Студент'}</Text>
-        <Button title="Открыть каталог" disabled={disabled} onPress={() => setAccount(false)} />
-        <Button title="Проверить сеанс" disabled={disabled} onPress={() => void controller.refresh()} />
-        <Button title="Настройки сервера" disabled={disabled} onPress={openSettings} />
-        <Button title="Выйти из аккаунта" disabled={disabled} onPress={() => { setMessage(''); void controller.logout(); }} />
-      </> : <Login disabled={disabled} />}
-      {!settings && !session && !restoreError && ready && <>
-        <Text selectable style={styles.text}>{server || 'Укажите адрес API в настройках сервера.'}</Text>
-        <Button title="Проверить подключение" disabled={disabled} onPress={() => void probe()} />
-        <Button title="Настройки сервера" disabled={disabled} onPress={openSettings} />
-      </>}
-      {(busy || checking) && ready && <ActivityIndicator accessibilityLabel="Загрузка" />}
-      {!!error && <Text accessibilityRole="alert" style={[styles.text, { color: '#C62828' }]}>{error}</Text>}
-      {!!notice && <Text accessibilityLiveRegion="polite" style={styles.text}>{notice}</Text>}
-      {!!message && <Text accessibilityLiveRegion="polite" style={styles.text}>{message}</Text>}
-    </ScrollView></SafeAreaView>;
+  return (
+    <View style={{ flex: 1 }}>
+      {routes.map(item => (
+        <ScreenActivity.Provider key={item.key} value={item.key === entry.key}>
+          <View
+            style={{ flex: 1, display: item.key === entry.key ? "flex" : "none" }}
+            accessibilityElementsHidden={item.key !== entry.key}
+            importantForAccessibility={item.key === entry.key ? "auto" : "no-hide-descendants"}
+          >
+            {renderScreen(item)}
+          </View>
+        </ScreenActivity.Provider>
+      ))}
+      {routes.length === 1 ? (
+        <View
+          style={{
+            borderTopWidth: 1,
+            borderColor: colors.line,
+            flexDirection: "row",
+            alignItems: "stretch",
+            paddingVertical: 6,
+          }}
+        >
+          {tabs.map(([tab, label]) => {
+            const selected = current.screen === tab;
+            return (
+              <Pressable
+                key={tab}
+                accessibilityRole="tab"
+                accessibilityLabel={label}
+                accessibilityState={{ selected }}
+                onPress={() => nav.tab(tab)}
+                style={{
+                  flex: 1,
+                  gap: 3,
+                  alignItems: "center",
+                  paddingHorizontal: 2,
+                  minHeight: 56,
+                }}
+              >
+                <View
+                  style={{
+                    backgroundColor: selected ? colors.accent : "transparent",
+                    width: 52,
+                    height: 30,
+                    borderRadius: 7,
+                    overflow: "hidden",
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                >
+                  <Icon name={iconFor(tab, selected)} />
+                </View>
+                <Txt
+                  maxFontSizeMultiplier={1.4}
+                  style={{
+                    textAlign: "center",
+                    fontSize: 11,
+                    color: selected ? colors.text : colors.hint,
+                    fontWeight: selected ? "700" : "400",
+                  }}
+                >
+                  {label}
+                </Txt>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+  );
 }
-function Login({ disabled }: { disabled: boolean }) {
-  const { controller } = useSession();
-  const [login, setLogin] = useState('');
-  const [password, setPassword] = useState('');
-  const [visible, setVisible] = useState(false);
-  async function submit() {
-    if (disabled || !login.trim() || !password) return;
-    Keyboard.dismiss();
-    try { await controller.login(login, password); }
-    finally { setPassword(''); }
-  }
-  return <>
-    <TextInput accessibilityLabel="Логин" placeholder="Логин" value={login} onChangeText={setLogin} editable={!disabled} autoCapitalize="none" autoCorrect={false} autoComplete="username" style={styles.input} />
-    <TextInput accessibilityLabel="Пароль" placeholder="Пароль" value={password} onChangeText={setPassword} editable={!disabled} secureTextEntry={!visible} autoCapitalize="none" autoCorrect={false} autoComplete="off" returnKeyType="done" onSubmitEditing={() => void submit()} style={styles.input} />
-    <Button title={visible ? 'Скрыть пароль' : 'Показать пароль'} disabled={disabled} onPress={() => setVisible(value => !value)} />
-    <Button title="Войти" disabled={disabled || !login.trim() || !password} onPress={() => void submit()} />
-  </>;
-}
-function Button({ title, disabled, onPress }: { title: string; disabled: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.button, disabled && { opacity: 0.5 }]}><Text style={styles.buttonText}>{title}</Text></Pressable>;
-}
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FFFFFF' }, content: { padding: 24, gap: 18 },
-  title: { fontSize: 26, fontWeight: '700', color: '#15171A' }, text: { fontSize: 16, color: '#15171A' },
-  input: { borderWidth: 1, borderColor: '#5F6672', borderRadius: 12, padding: 14, fontSize: 16, color: '#15171A' },
-  button: { backgroundColor: '#C7F32C', padding: 16, borderRadius: 12 },
-  buttonText: { fontSize: 16, fontWeight: '600', color: '#15171A', textAlign: 'center' },
-});
