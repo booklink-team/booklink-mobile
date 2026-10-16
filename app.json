@@ -2,13 +2,13 @@
   "expo": {
     "name": "Booklink",
     "slug": "booklink",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/logo.png",
     "android": {
       "package": "ru.booklink.mobile",
-      "versionCode": 2,
+      "versionCode": 3,
       "permissions": [
         "INTERNET"
       ],

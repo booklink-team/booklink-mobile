@@ -59,7 +59,7 @@ HTTPS-адрес с `/api`, полученный у владельца серв�
 
 ```powershell
 npm run apk
-adb -s <serial> install -r .\artifacts\booklink-1.0.1.apk
+adb -s <serial> install -r .\artifacts\booklink-1.0.2.apk
 ```
 
 Откройте Booklink на устройстве. Подпись локальная debug; ключи, `.env` и APK не добавляйте в Git.
