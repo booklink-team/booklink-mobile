@@ -1,4 +1,4 @@
-export type Tab = "catalog" | "account";
+export type Tab = "catalog" | "reservations" | "account";
 export type Route =
   | { screen: Tab }
   | { screen: "book"; id: number };

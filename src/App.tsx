@@ -18,6 +18,7 @@ import { backFrom, Navigation, Route, RouteEntry, Tab } from "./navigation";
 import { ScreenActivity } from "./screenActivity";
 import { Account, Login } from "./screens/Auth";
 import { Book, Catalog } from "./screens/Catalog";
+import { Reservations } from "./screens/Reservations";
 import { icons } from "./icons";
 import { DialogProvider } from "./dialogs";
 
@@ -73,7 +74,10 @@ function Root() {
   );
 }
 function Workspace() {
+  const { session, pending, busy, checking, checkPending, dismissPending } =
+    useSession();
   const { colors, dark } = useTheme();
+  const librarian = session?.user.role === "Librarian";
   const initial: Tab = "catalog";
   const sequence = useRef(0);
   const [routes, setRoutes] = useState<RouteEntry[]>([{ key: 0, route: { screen: initial } }]);
@@ -119,21 +123,31 @@ function Workspace() {
       case "book":
         screen = <Book id={current.id} nav={nav} />;
         break;
+      case "reservations":
+        screen = <Reservations nav={nav} />;
+        break;
       case "account":
         screen = <Account />;
         break;
     }
     return screen;
   }
-  const tabs: [Tab, string][] = [
-    ["catalog", "Каталог"],
-    ["account", "Аккаунт"],
-  ];
+  const tabs: [Tab, string][] = librarian
+    ? [
+        ["catalog", "Каталог"],
+        ["account", "Аккаунт"],
+      ]
+    : [
+        ["catalog", "Каталог"],
+        ["reservations", "Брони"],
+        ["account", "Аккаунт"],
+      ];
   function iconFor(tab: Tab, selected: boolean): keyof typeof icons {
     if (selected)
       return (
         {
           catalog: "catalog",
+          reservations: "reservationOn",
           account: "accountOn",
         } as const
       )[tab];
@@ -142,6 +156,34 @@ function Workspace() {
   }
   return (
     <View style={{ flex: 1 }}>
+      {pending ? (
+        <View style={{ backgroundColor: colors.info, padding: 10, gap: 6 }}>
+          <Txt style={{ fontSize: 12 }}>
+            Результат операции пока неизвестен. Изменения заблокированы до
+            проверки.
+          </Txt>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void checkPending()}
+              disabled={checking || busy}
+              style={{ padding: 6 }}
+            >
+              <Txt style={{ fontWeight: "700", fontSize: 12 }}>
+                {checking ? "Проверяем…" : "Проверить результат"}
+              </Txt>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={dismissPending}
+              disabled={checking || busy}
+              style={{ padding: 6 }}
+            >
+              <Txt style={{ fontSize: 12 }}>Снять блокировку</Txt>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
       {routes.map(item => (
         <ScreenActivity.Provider key={item.key} value={item.key === entry.key}>
           <View

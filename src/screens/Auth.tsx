@@ -157,7 +157,7 @@ const loginStyles = StyleSheet.create({
 });
 export function Account() {
   const { showDialog } = useDialogs();
-  const { session, logout, busy } = useSession();
+  const { session, logout, busy, pending } = useSession();
   const { colors, dark, setDark } = useTheme();
   const librarian = session?.user.role === "Librarian";
   const role = librarian ? "Библиотекарь" : "Студент";
@@ -200,7 +200,9 @@ export function Account() {
       style={{ marginTop: 6 }} textStyle={{ fontSize: 16 }}
       onPress={() => showDialog({
         title: "Выйти из аккаунта?", tone: "warning",
-        message: "Для продолжения потребуется повторный вход.",
+        message: pending
+          ? "Останется неподтверждённая операция. После входа проверьте её состояние у сервера."
+          : "Для продолжения потребуется повторный вход.",
         primary: { title: "Выйти", destructive: true, onPress: () => void logout() },
         secondary: { title: "Остаться" },
       })} />

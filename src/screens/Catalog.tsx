@@ -1,13 +1,15 @@
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
 import { Keyboard, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useResource, useSearch } from "../resource";
-import { Book as BookDto, BookItem, Page } from "../types";
+import { useSession } from "../session";
+import { Book as BookDto, BookItem, Page, Reservation } from "../types";
 import {
   BookHeading,
   Button,
   Cover,
   Empty,
+  Info,
   LoadState,
   Muted,
   Screen,
@@ -17,6 +19,10 @@ import {
   useTheme,
 } from "../ui";
 import { Navigation } from "../navigation";
+import { date } from "../dates";
+import { ScreenActivity } from "../screenActivity";
+import { ApiError } from "../api";
+import { FeedbackDialog } from "../FeedbackDialog";
 
 export function Catalog({ nav }: { nav: Navigation }) {
   const search = useSearch();
@@ -253,13 +259,54 @@ const catalogStyles = StyleSheet.create({
 });
 export function Book({ id, nav }: { id: number; nav: Navigation }) {
   const resource = useResource<BookDto>(`/books/${id}`);
+  const { api, mutate, busy, pending, session } = useSession();
   const book = resource.data;
+  const reservationUnavailable = book?.reservationForbidden
+    ? "Бронирование недоступно"
+    : book?.availableCopies === 0
+      ? "Нет свободных экземпляров"
+      : null;
+  const active = useContext(ScreenActivity);
+  const [reserved, setReserved] = useState<{ title: string; expiresAt: string | null } | null>(null);
+  const [failure, setFailure] = useState<{ message: string; code?: string; uncertain: boolean } | null>(null);
+  function reserve() {
+    setFailure(null);
+    setReserved(null);
+    void mutate(async () => {
+      const before = await api.get<Reservation[]>("/reservations/my");
+      return {
+        kind: "reserve",
+        bookId: id,
+        beforeIds: before.map((r) => r.id),
+      };
+    }, (result) => {
+      const reservation = result as Reservation | undefined;
+      setReserved({
+        title: reservation?.book?.title || book?.title || "Книга",
+        expiresAt: reservation?.expiresAt || null,
+      });
+    }, (error, uncertain) => {
+      setFailure({ message: error.message, code: error instanceof ApiError ? error.code : undefined, uncertain });
+    });
+  }
   return (
     <Screen
       back={nav.back}
       refreshing={resource.loading && !!book}
       onRefresh={() => void resource.reload()}
     >
+      <ReservationSuccess
+        reservation={reserved}
+        visible={active && !!reserved}
+        close={() => setReserved(null)}
+        openReservations={() => { setReserved(null); nav.tab("reservations"); }}
+      />
+      <ReservationFailure
+        failure={failure}
+        visible={active && !!failure}
+        close={() => setFailure(null)}
+        navigate={(tab) => { setFailure(null); nav.tab(tab); }}
+      />
       <LoadState
         loading={resource.loading && !book}
         error={resource.error}
@@ -275,11 +322,75 @@ export function Book({ id, nav }: { id: number; nav: Navigation }) {
             />
             <Muted>Год издания: {book.year ?? "не указан"}</Muted>
           </BookHeading>
+          {session?.user.role === "Student" ? (
+            <>
+              <Button
+                title={reservationUnavailable ?? "Забронировать"}
+                style={{ borderRadius: 7 }}
+                icon={reservationUnavailable ? undefined : "reserve"}
+                onPress={reserve}
+                loading={busy}
+                disabled={
+                  !!pending ||
+                  !!resource.error ||
+                  resource.loading ||
+                  book.reservationForbidden ||
+                  book.availableCopies === 0
+                }
+              />
+              {!reservationUnavailable ? <Info neutral>
+                Бронь действует 48 часов. Забрать книгу нужно в библиотеке по
+                читательскому билету. Доступность и ограничения проверяет
+                сервер.
+              </Info> : null}
+            </>
+          ) : null}
           <Txt style={{ fontSize: 16, fontWeight: "700" }}>Описание</Txt>
           <Muted>{book.description || "Описание пока не добавлено."}</Muted>
         </>
       ) : null}
     </Screen>
   );
+}
+
+function ReservationSuccess({ reservation, visible, close, openReservations }: {
+  reservation: { title: string; expiresAt: string | null } | null;
+  visible: boolean;
+  close: () => void;
+  openReservations: () => void;
+}) {
+  return <FeedbackDialog
+    visible={visible}
+    close={close}
+    title="Книга забронирована"
+    message={`«${reservation?.title}». ${reservation?.expiresAt
+      ? `Заберите её в библиотеке до ${date(reservation.expiresAt)} (МСК).`
+      : "Номер и срок получения доступны в разделе «Брони»."}`}
+    primary={{ title: "Перейти к броням", onPress: openReservations }}
+    secondary={{ title: "Закрыть", onPress: close }}
+  />;
+}
+
+function ReservationFailure({ failure, visible, close, navigate }: {
+  failure: { message: string; code?: string; uncertain: boolean } | null;
+  visible: boolean;
+  close: () => void;
+  navigate: (tab: "reservations") => void;
+}) {
+  const target = failure?.uncertain ? undefined
+    : ["reservation_limit", "already_reserved"].includes(failure?.code ?? "") ? "reservations" : undefined;
+  return <FeedbackDialog
+    visible={visible}
+    close={close}
+    warning
+    title={failure?.uncertain ? "Результат пока неизвестен" : "Не удалось забронировать"}
+    message={failure?.uncertain
+      ? "Ответ не получен. Проверяем состояние на сервере. Повторное бронирование заблокировано до проверки результата."
+      : failure?.code === "has_overdue"
+        ? "У вас есть просроченная выдача. Верните книгу, чтобы снова бронировать."
+        : failure?.message ?? ""}
+    primary={{ title: "Понятно", onPress: close }}
+    secondary={target ? { title: "Мои брони", onPress: () => navigate(target) } : undefined}
+  />;
 }
 

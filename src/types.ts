@@ -19,10 +19,22 @@ export type BookItem = BookShort & {
 export type Book = BookItem & {
   description: string | null;
   totalCopies: number;
+  reservationForbidden: boolean;
+  renewalForbidden: boolean;
 };
 export type Page<T> = {
   items: T[];
   page: number;
   pageSize: number;
   total: number;
+};
+export type Reader = { id: number; name: string; login: string };
+export type Reservation = {
+  id: number;
+  book: BookShort;
+  inventoryNumber: string;
+  createdAt: string;
+  expiresAt: string;
+  status: "Active" | "Cancelled" | "Expired" | "Completed";
+  reader: Reader | null;
 };
