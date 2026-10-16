@@ -1,7 +1,8 @@
 export type Tab = "catalog" | "reservations" | "account";
 export type Route =
   | { screen: Tab }
-  | { screen: "book"; id: number };
+  | { screen: "book"; id: number }
+  | { screen: "reservation"; id: number };
 export type Navigation = {
   push: (route: Route) => void;
   back: () => void;

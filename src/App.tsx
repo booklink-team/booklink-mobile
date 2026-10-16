@@ -18,7 +18,7 @@ import { backFrom, Navigation, Route, RouteEntry, Tab } from "./navigation";
 import { ScreenActivity } from "./screenActivity";
 import { Account, Login } from "./screens/Auth";
 import { Book, Catalog } from "./screens/Catalog";
-import { Reservations } from "./screens/Reservations";
+import { ReservationDetail, Reservations } from "./screens/Reservations";
 import { icons } from "./icons";
 import { DialogProvider } from "./dialogs";
 
@@ -78,7 +78,7 @@ function Workspace() {
     useSession();
   const { colors, dark } = useTheme();
   const librarian = session?.user.role === "Librarian";
-  const initial: Tab = "catalog";
+  const initial: Tab = librarian ? "reservations" : "catalog";
   const sequence = useRef(0);
   const [routes, setRoutes] = useState<RouteEntry[]>([{ key: 0, route: { screen: initial } }]);
   const entry = routes[routes.length - 1];
@@ -126,6 +126,9 @@ function Workspace() {
       case "reservations":
         screen = <Reservations nav={nav} />;
         break;
+      case "reservation":
+        screen = <ReservationDetail id={current.id} nav={nav} />;
+        break;
       case "account":
         screen = <Account />;
         break;
@@ -134,7 +137,7 @@ function Workspace() {
   }
   const tabs: [Tab, string][] = librarian
     ? [
-        ["catalog", "Каталог"],
+        ["reservations", "Брони"],
         ["account", "Аккаунт"],
       ]
     : [

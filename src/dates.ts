@@ -10,3 +10,6 @@ export function date(value: string | null | undefined): string {
     hourCycle: "h23",
   }).format(new Date(value));
 }
+export function reservationSearch(value: string) {
+  return value.trim().replace(/^[bв]-\s*(\d+)$/i, "$1");
+}

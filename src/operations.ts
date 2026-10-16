@@ -8,7 +8,7 @@ export interface OperationReader {
 // A changing request is sent once. Recovery never sends it again.
 export type Operation =
   | { kind: "reserve"; bookId: number; beforeIds: number[] }
-  | { kind: "cancel"; id: number };
+  | { kind: "cancel" | "issue"; id: number };
 
 export function operationRequest(op: Operation): [string, string, unknown?] {
   switch (op.kind) {
@@ -16,6 +16,8 @@ export function operationRequest(op: Operation): [string, string, unknown?] {
       return ["/reservations", "POST", { bookId: op.bookId }];
     case "cancel":
       return [`/reservations/${op.id}/cancel`, "POST"];
+    case "issue":
+      return [`/librarian/reservations/${op.id}/issue`, "POST"];
 
   }
 }
@@ -31,6 +33,11 @@ export async function verifyOperation(
     case "cancel":
       return (await api.get<Reservation[]>("/reservations/my")).some(
         (r) => r.id === op.id && r.status === "Cancelled",
+      );
+    case "issue":
+      return (
+        (await api.get<Reservation>(`/librarian/reservations/${op.id}`))
+          .status === "Completed"
       );
 
   }
