@@ -375,10 +375,11 @@ function ReservationFailure({ failure, visible, close, navigate }: {
   failure: { message: string; code?: string; uncertain: boolean } | null;
   visible: boolean;
   close: () => void;
-  navigate: (tab: "reservations") => void;
+  navigate: (tab: "reservations" | "loans") => void;
 }) {
   const target = failure?.uncertain ? undefined
-    : ["reservation_limit", "already_reserved"].includes(failure?.code ?? "") ? "reservations" : undefined;
+    : ["reservation_limit", "already_reserved"].includes(failure?.code ?? "") ? "reservations"
+      : ["has_overdue", "loan_limit", "already_issued"].includes(failure?.code ?? "") ? "loans" : undefined;
   return <FeedbackDialog
     visible={visible}
     close={close}
@@ -390,7 +391,7 @@ function ReservationFailure({ failure, visible, close, navigate }: {
         ? "У вас есть просроченная выдача. Верните книгу, чтобы снова бронировать."
         : failure?.message ?? ""}
     primary={{ title: "Понятно", onPress: close }}
-    secondary={target ? { title: "Мои брони", onPress: () => navigate(target) } : undefined}
+    secondary={target ? { title: target === "reservations" ? "Мои брони" : "Мои книги", onPress: () => navigate(target) } : undefined}
   />;
 }
 

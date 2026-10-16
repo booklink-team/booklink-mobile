@@ -38,3 +38,18 @@ export type Reservation = {
   status: "Active" | "Cancelled" | "Expired" | "Completed";
   reader: Reader | null;
 };
+export type Loan = {
+  id: number;
+  book: BookShort;
+  inventoryNumber: string;
+  issuedAt: string;
+  dueAt: string;
+  returnedAt: string | null;
+  renewalCount: number;
+  status: "Active" | "Returned";
+  isOverdue: boolean;
+  canRenew: boolean;
+  renewalDenyReason: string | null;
+  renewedDueAt: string | null;
+  reader: Reader | null;
+};

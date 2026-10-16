@@ -19,6 +19,7 @@ import { ScreenActivity } from "./screenActivity";
 import { Account, Login } from "./screens/Auth";
 import { Book, Catalog } from "./screens/Catalog";
 import { ReservationDetail, Reservations } from "./screens/Reservations";
+import { Loans } from "./screens/Loans";
 import { icons } from "./icons";
 import { DialogProvider } from "./dialogs";
 
@@ -129,6 +130,9 @@ function Workspace() {
       case "reservation":
         screen = <ReservationDetail id={current.id} nav={nav} />;
         break;
+      case "loans":
+        screen = <Loans nav={nav} />;
+        break;
       case "account":
         screen = <Account />;
         break;
@@ -143,6 +147,7 @@ function Workspace() {
     : [
         ["catalog", "Каталог"],
         ["reservations", "Брони"],
+        ["loans", "Мои книги"],
         ["account", "Аккаунт"],
       ];
   function iconFor(tab: Tab, selected: boolean): keyof typeof icons {
@@ -151,6 +156,7 @@ function Workspace() {
         {
           catalog: "catalog",
           reservations: "reservationOn",
+          loans: "loanOn",
           account: "accountOn",
         } as const
       )[tab];
