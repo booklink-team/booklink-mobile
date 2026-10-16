@@ -3,11 +3,13 @@ import { ActivityIndicator, BackHandler, Image, Keyboard, Pressable, ScrollView,
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { checkConnection } from './api';
 import { SessionProvider, useSession } from './session';
+import { Catalog } from './catalog';
 
 export default function App() { return <SafeAreaProvider><SessionProvider><Workspace /></SessionProvider></SafeAreaProvider>; }
 function Workspace() {
   const { server, session, ready, busy, notice, error, restoreError, controller } = useSession();
   const [settings, setSettings] = useState(false);
+  const [account, setAccount] = useState(false);
   const [draft, setDraft] = useState(server);
   const [message, setMessage] = useState('');
   const [checking, setChecking] = useState(false);
@@ -16,10 +18,12 @@ function Workspace() {
   useEffect(() => {
     const listener = BackHandler.addEventListener('hardwareBackPress', () => {
       if (settings) { if (!disabled) { setSettings(false); setMessage(''); } return true; }
+      if (session && account) { setAccount(false); return true; }
       return false;
     });
     return () => listener.remove();
-  }, [settings, disabled]);
+  }, [settings, disabled, session, account]);
+  useEffect(() => { if (!session) setAccount(false); }, [session]);
   function openSettings() { setDraft(server); setMessage(''); setSettings(true); }
   async function probe() {
     if (probeLock.current || busy) return;
@@ -27,6 +31,11 @@ function Workspace() {
     try { setMessage(await checkConnection(server)); }
     catch (failure) { setMessage(failure instanceof Error ? failure.message : 'Ответ API не получен.'); }
     finally { probeLock.current = false; setChecking(false); }
+  }
+  if (ready && session && !settings && !restoreError && !account) {
+    return <SafeAreaView style={styles.root}><StatusBar barStyle="dark-content" />
+      <Catalog key={`${server}:${session.user.id}`} openAccount={() => setAccount(true)} />
+    </SafeAreaView>;
   }
   return <SafeAreaView style={styles.root}><StatusBar barStyle="dark-content" />
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -47,6 +56,7 @@ function Workspace() {
         <Text style={styles.text}>{session.user.name}</Text>
         <Text style={styles.text}>Логин: {session.user.login}</Text>
         <Text style={styles.text}>Роль: {session.user.role === 'Librarian' ? 'Библиотекарь' : 'Студент'}</Text>
+        <Button title="Открыть каталог" disabled={disabled} onPress={() => setAccount(false)} />
         <Button title="Проверить сеанс" disabled={disabled} onPress={() => void controller.refresh()} />
         <Button title="Настройки сервера" disabled={disabled} onPress={openSettings} />
         <Button title="Выйти из аккаунта" disabled={disabled} onPress={() => { setMessage(''); void controller.logout(); }} />

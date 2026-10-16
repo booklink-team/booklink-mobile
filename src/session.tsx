@@ -4,7 +4,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { AuthController } from './auth';
 
-// Kept separate from the full application's session and bound to a specific API.
 const SESSION_KEY = 'booklink.s2.session';
 const SERVER_KEY = 'booklink.s1.server';
 const Context = createContext<AuthController | null>(null);

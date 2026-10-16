@@ -124,6 +124,9 @@ export class AuthController {
       else throw error;
     }
   });
+  expireSession = async (token: string) => {
+    if (this.state.session?.accessToken === token) await this.invalidate('Сеанс завершён. Войдите снова.');
+  };
   checkExpiry = () => {
     const current = this.state.session;
     if (current && Date.parse(current.expiresAt) <= new Api(this.state.server).now()) void this.invalidate('Сеанс завершён. Войдите снова.');
