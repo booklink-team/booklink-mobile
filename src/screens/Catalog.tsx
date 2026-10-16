@@ -24,13 +24,14 @@ import { ScreenActivity } from "../screenActivity";
 import { ApiError } from "../api";
 import { FeedbackDialog } from "../FeedbackDialog";
 
-export function Catalog({ nav }: { nav: Navigation }) {
+export function Catalog({ nav, listId }: { nav: Navigation; listId?: number }) {
   const search = useSearch();
   const { colors } = useTheme();
   return (
     <Screen
-      title="Каталог"
-      titleStyle={{ fontSize: 22 }}
+      title={listId ? "Добавить книгу" : "Каталог"}
+      titleStyle={listId ? undefined : { fontSize: 22 }}
+      back={listId ? nav.back : undefined}
     >
       <SearchField
         placeholder="Название или автор"
@@ -54,6 +55,7 @@ export function Catalog({ nav }: { nav: Navigation }) {
         key={search.query}
         query={search.query}
         nav={nav}
+        listId={listId}
         searching={search.text.trim() !== search.query}
         resetSearch={() => { Keyboard.dismiss(); search.setText(""); }}
       />
@@ -63,11 +65,13 @@ export function Catalog({ nav }: { nav: Navigation }) {
 function CatalogPage({
   query,
   nav,
+  listId,
   searching,
   resetSearch,
 }: {
   query: string;
   nav: Navigation;
+  listId?: number;
   searching: boolean;
   resetSearch: () => void;
 }) {
@@ -75,13 +79,26 @@ function CatalogPage({
   const resource = useResource<Page<BookItem>>(
     `/books?search=${encodeURIComponent(query)}&page=${page}`,
   );
+  const { mutate, busy, pending } = useSession();
   const { colors } = useTheme();
   const { fontScale } = useWindowDimensions();
+  const active = useContext(ScreenActivity);
+  const [addedTitle, setAddedTitle] = useState<string | null>(null);
+  function closeAdded() { setAddedTitle(null); nav.back(); }
   const loading = searching || (resource.loading && !resource.data);
   const initialError = !loading && !resource.data && !!resource.error;
-  function select(book: BookItem) { nav.push({ screen: "book", id: book.id }); }
+  async function select(book: BookItem) {
+    if (listId) {
+      await mutate(
+        () => ({ kind: "addBook", id: listId, bookId: book.id }),
+        () => setAddedTitle(book.title),
+      );
+    } else nav.push({ screen: "book", id: book.id });
+  }
   return (
     <>
+      <FeedbackDialog visible={active && !!addedTitle} close={closeAdded} title="Книга добавлена в список"
+        message={`«${addedTitle ?? ""}» сохранена в вашей подборке.`} primary={{ title: "Понятно", onPress: closeAdded }} />
       {initialError ? <CatalogLoadError error={resource.error} retry={() => void resource.reload()} />
         : <LoadState {...resource} loading={loading} variant="books" error={loading ? "" : resource.error} retry={() => void resource.reload()} />}
       {!loading && resource.data ? (
@@ -94,7 +111,10 @@ function CatalogPage({
               <Pressable
                 key={book.id}
                 accessibilityRole="button"
-                accessibilityLabel={book.title}
+                accessibilityLabel={
+                  listId ? `Добавить: ${book.title}` : book.title
+                }
+                disabled={!!listId && (busy || !!pending || resource.loading || !!resource.error)}
                 onPress={() => void select(book)}
                 style={({ pressed }) => ({
                   flexDirection: "row",
@@ -337,6 +357,14 @@ export function Book({ id, nav }: { id: number; nav: Navigation }) {
                   book.reservationForbidden ||
                   book.availableCopies === 0
                 }
+              />
+              <Button
+                title="Добавить в список"
+                style={{ borderRadius: 7 }}
+                icon="add"
+                variant="outline"
+                onPress={() => nav.push({ screen: "chooseList", bookId: id })}
+                disabled={busy || !!pending}
               />
               {!reservationUnavailable ? <Info neutral>
                 Бронь действует 48 часов. Забрать книгу нужно в библиотеке по

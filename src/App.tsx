@@ -20,6 +20,7 @@ import { Account, Login } from "./screens/Auth";
 import { Book, Catalog } from "./screens/Catalog";
 import { ReservationDetail, Reservations } from "./screens/Reservations";
 import { LoanDetail, Loans } from "./screens/Loans";
+import { List, ListEditor, Lists } from "./screens/ReadingLists";
 import { icons } from "./icons";
 import { DialogProvider } from "./dialogs";
 
@@ -136,6 +137,23 @@ function Workspace() {
       case "loan":
         screen = <LoanDetail id={current.id} nav={nav} />;
         break;
+      case "lists":
+        screen = <Lists nav={nav} />;
+        break;
+      case "list":
+        screen = <List id={current.id} nav={nav} />;
+        break;
+      case "listEditor":
+        screen = (
+          <ListEditor id={current.id} initialName={current.name} nav={nav} />
+        );
+        break;
+      case "chooseList":
+        screen = <Lists bookId={current.bookId} nav={nav} />;
+        break;
+      case "chooseBook":
+        screen = <Catalog listId={current.listId} nav={nav} />;
+        break;
       case "account":
         screen = <Account />;
         break;
@@ -152,6 +170,7 @@ function Workspace() {
         ["catalog", "Каталог"],
         ["reservations", "Брони"],
         ["loans", "Мои книги"],
+        ["lists", "Списки"],
         ["account", "Аккаунт"],
       ];
   function iconFor(tab: Tab, selected: boolean): keyof typeof icons {
@@ -161,6 +180,7 @@ function Workspace() {
           catalog: "catalog",
           reservations: "reservationOn",
           loans: "loanOn",
+          lists: "listOn",
           account: "accountOn",
         } as const
       )[tab];

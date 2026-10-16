@@ -53,3 +53,15 @@ export type Loan = {
   renewedDueAt: string | null;
   reader: Reader | null;
 };
+export type ReadingList = {
+  id: number;
+  name: string;
+  bookCount: number;
+  createdAt: string;
+};
+export type ListDetails = {
+  id: number;
+  name: string;
+  createdAt: string;
+  books: BookItem[];
+};
